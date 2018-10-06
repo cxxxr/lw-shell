@@ -2,6 +2,7 @@
 
 (defclass shell-pane (capi:interactive-pane)
   ((process :reader shell-pane-process)
+   (thread :accessor shell-pane-thread)
    (stream :reader shell-pane-stream))
   (:default-initargs
    :top-level-function 'entry-point))
@@ -18,15 +19,20 @@
                       (initialize self)
                       (mainloop self))
       (when (async-process:process-alive-p process)
-        (async-process:delete-process process)))))
+        (async-process:delete-process process))
+      (terminate-shell self))))
 
 (defmethod initialize ((self shell-pane))
   (editor:bind-key "Beginning of Line After Prompt" "Control-a"
                    :buffer  (capi:editor-pane-buffer self))
-  (mp:process-run-function (princ-to-string self)
-                           ()
-                           'receive-output-loop
-                           self))
+  (setf (shell-pane-thread self)
+        (mp:process-run-function (princ-to-string self)
+                                 ()
+                                 'receive-output-loop
+                                 self)))
+
+(defmethod terminate-shell ((self shell-pane))
+  (mp:process-terminate (shell-pane-thread self)))
 
 (defmethod mainloop ((self shell-pane))
   (loop :with stream := (shell-pane-stream self)
@@ -56,9 +62,10 @@
                     (write-string line out))))))
 
 (defun main ()
-  (capi:display
-   (make-instance 'capi:interface
-                  :layout (make-instance 'capi:column-layout
-                                         :description (list (make-instance 'shell-pane)))
-                  :best-width 800
-                  :best-height 600)))
+  (let ((shell-pane (make-instance 'shell-pane)))
+    (capi:display
+     (make-instance 'capi:interface
+                    :layout (make-instance 'capi:column-layout
+                                           :description (list shell-pane))
+                    :best-width 800
+                    :best-height 600))))
