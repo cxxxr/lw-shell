@@ -1,3 +1,3 @@
 (defpackage :lw-shell
   (:add-use-defaults t)
-  (:export))
+  (:export :main))
