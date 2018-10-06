@@ -1,9 +1,9 @@
 (in-package :lw-shell)
 
 (defclass shell-pane (capi:interactive-pane)
-  ((process :reader shell-pane-process)
+  ((process :accessor shell-pane-process)
    (thread :accessor shell-pane-thread)
-   (stream :reader shell-pane-stream))
+   (stream :accessor shell-pane-stream))
   (:default-initargs
    :top-level-function 'entry-point))
 
@@ -12,9 +12,9 @@
   (startup shell-pane))
 
 (defmethod startup ((self shell-pane))
-  (with-slots (process stream) self
-    (setq process (async-process:create-process "bash" :nonblock nil)
-          stream (capi:interactive-pane-stream self))
+  (let ((process (async-process:create-process "bash" :nonblock nil)))
+    (setf (shell-pane-process self) process
+          (shell-pane-stream self) (capi:interactive-pane-stream self))
     (unwind-protect (progn
                       (initialize self)
                       (mainloop self))
@@ -42,14 +42,16 @@
         :do (async-process:process-send-input process (string-append input #\newline))))
 
 (defmethod receive-output-loop ((self shell-pane))
-  (loop :with stream := (shell-pane-stream self)
-        :and process := (shell-pane-process self)
+  (loop :with process := (shell-pane-process self)
         :for output := (async-process:process-receive-output process)
         :while output
         :do (capi:apply-in-pane-process-if-alive self
-                                                 #'write-string
-                                                 (trim-output output)
-                                                 stream)))
+                                                 #'write-output
+                                                 self
+                                                 output)))
+
+(defmethod write-output ((self shell-pane) text)
+  (write-string (trim-output text) (shell-pane-stream self)))
 
 (defun trim-output (string)
   (with-output-to-string (out)
